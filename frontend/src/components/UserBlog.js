@@ -1,4 +1,3 @@
-import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import Blog from './Blog';
 import { serverURL } from '../helper/Helper';
@@ -9,15 +8,26 @@ import {
   CircularProgress, 
   Alert,
   Button,
-  Paper
+  Paper,
+  Grid,
+  Chip,
+  Pagination,
+  Fade,
+  Zoom
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { 
   Article as ArticleIcon,
   Add as AddIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  TrendingUp as TrendingIcon,
+  Visibility as VisibilityIcon,
+  Favorite as FavoriteIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import axios from 'axios';
+import socketService from '../services/socketService';
 import Swal from 'sweetalert2';
 
 // Styled Components
@@ -46,12 +56,24 @@ const UserBlogTitle = styled(Typography)(({ theme }) => ({
   },
 }));
 
-const UserBlogSubtitle = styled(Typography)(({ theme }) => ({
-  fontSize: '1.2rem',
-  color: theme.palette.text.secondary,
-  maxWidth: '600px',
-  margin: '0 auto',
-  lineHeight: 1.6,
+const StatsCard = styled(Paper)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.9)',
+  backdropFilter: 'blur(20px)',
+  borderRadius: theme.spacing(3),
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(4),
+  border: '1px solid rgba(255, 255, 255, 0.3)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+}));
+
+const StatChip = styled(Chip)(({ theme }) => ({
+  backgroundColor: 'rgba(102, 126, 234, 0.1)',
+  color: '#667eea',
+  fontWeight: 600,
+  fontSize: '0.9rem',
+  '& .MuiChip-icon': {
+    color: '#667eea',
+  },
 }));
 
 const EmptyState = styled(Paper)(({ theme }) => ({
@@ -84,61 +106,131 @@ const CreateBlogButton = styled(Button)(({ theme }) => ({
   },
 }));
 
-const RefreshButton = styled(Button)(({ theme }) => ({
-  background: 'rgba(255, 255, 255, 0.9)',
-  color: theme.palette.primary.main,
-  padding: theme.spacing(1, 3),
-  borderRadius: theme.spacing(2),
-  fontWeight: 600,
-  textTransform: 'none',
-  border: '2px solid rgba(102, 126, 234, 0.2)',
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    background: 'rgba(102, 126, 234, 0.1)',
-    transform: 'translateY(-1px)',
-    boxShadow: '0 4px 15px rgba(102, 126, 234, 0.2)',
+const PaginationContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  marginTop: theme.spacing(6),
+  '& .MuiPagination-root': {
+    '& .MuiPaginationItem-root': {
+      borderRadius: theme.spacing(1.5),
+      fontWeight: 600,
+      '&.Mui-selected': {
+        background: 'linear-gradient(135deg, #667eea, #764ba2)',
+        color: 'white',
+      },
+    },
   },
 }));
 
 const UserBlog = () => {
-  const [user, setUser] = useState(null);
+  const user = useSelector(state => state.user);
+  const [userBlogs, setUserBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const id = localStorage.getItem("userId");
+  const [stats, setStats] = useState(null);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 0,
+    totalBlogs: 0,
+    hasNext: false,
+    hasPrev: false
+  });
+  
+  const userId = localStorage.getItem("userId");
 
-  const sendRequest = async () => {
+  const fetchUserBlogs = async (page = 1) => {
     try {
-      const res = await axios.get(`${serverURL}/api/blog/user/${id}`);
-      const data = await res.data;
-      return data;
+      setLoading(true);
+      setError(null);
+      
+      const [blogsResponse, statsResponse] = await Promise.all([
+        axios.get(`${serverURL}/api/blog/user/${userId}?page=${page}&limit=6`),
+        axios.get(`${serverURL}/api/user/stats/${userId}`)
+      ]);
+      
+      const { user: userData, pagination: paginationData } = blogsResponse.data;
+      setUserBlogs(userData.blogs || []);
+      setPagination(paginationData || {
+        currentPage: page,
+        totalPages: 0,
+        totalBlogs: 0,
+        hasNext: false,
+        hasPrev: false
+      });
+      
+      setStats(statsResponse.data.stats);
     } catch (err) {
       console.error('Error fetching user blogs:', err);
       setError('Failed to fetch your blogs. Please try again.');
-      throw err;
-    }
-  };
-
-  const fetchUserBlogs = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const data = await sendRequest();
-      setUser(data.user);
-    } catch (err) {
-      console.error('Error in fetchUserBlogs:', err);
+      
+      Swal.fire({
+        icon: 'error',
+        title: 'Error Loading Blogs',
+        text: 'Unable to load your blogs. Please check your connection.',
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(20px)',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleRetry = () => {
-    fetchUserBlogs();
+    fetchUserBlogs(pagination.currentPage);
   };
 
+  const handlePageChange = (event, page) => {
+    fetchUserBlogs(page);
+  };
+
+  // Real-time updates
   useEffect(() => {
-    fetchUserBlogs();
-  }, []);
+    const socket = socketService.connect();
+
+    const handleBlogCreated = (data) => {
+      if (data.blog.user._id === userId) {
+        setUserBlogs(prev => [data.blog, ...prev]);
+        // Update stats
+        setStats(prev => prev ? {
+          ...prev,
+          totalBlogs: prev.totalBlogs + 1
+        } : null);
+      }
+    };
+
+    const handleBlogUpdated = (data) => {
+      if (data.blog.user._id === userId) {
+        setUserBlogs(prev => 
+          prev.map(blog => 
+            blog._id === data.blog._id ? data.blog : blog
+          )
+        );
+      }
+    };
+
+    const handleBlogDeleted = (data) => {
+      setUserBlogs(prev => prev.filter(blog => blog._id !== data.blogId));
+      // Update stats
+      setStats(prev => prev ? {
+        ...prev,
+        totalBlogs: Math.max(0, prev.totalBlogs - 1)
+      } : null);
+    };
+
+    socketService.onNewBlog(handleBlogCreated);
+    socketService.onBlogUpdated(handleBlogUpdated);
+    socketService.onBlogDeleted(handleBlogDeleted);
+
+    return () => {
+      socketService.removeAllListeners();
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (userId) {
+      fetchUserBlogs();
+    }
+  }, [userId]);
 
   if (loading) {
     return (
@@ -157,12 +249,19 @@ const UserBlog = () => {
           <Alert severity="error" sx={{ mb: 4, borderRadius: 3, fontSize: '1.1rem' }}>
             {error}
           </Alert>
-          <RefreshButton
+          <Button
             onClick={handleRetry}
             startIcon={<RefreshIcon />}
+            variant="contained"
+            sx={{
+              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5a6fd8, #6a4190)',
+              },
+            }}
           >
             Try Again
-          </RefreshButton>
+          </Button>
         </Box>
       </UserBlogContainer>
     );
@@ -175,58 +274,108 @@ const UserBlog = () => {
         <UserBlogTitle variant="h1">
           My Blog Collection
         </UserBlogTitle>
-        <UserBlogSubtitle variant="h6">
+        <Typography variant="h6" color="text.secondary" sx={{ maxWidth: '600px', mx: 'auto', lineHeight: 1.6 }}>
           Manage and showcase your personal blog posts
-        </UserBlogSubtitle>
+        </Typography>
       </UserBlogHeader>
+
+      {/* Statistics */}
+      {stats && (
+        <Fade in={true}>
+          <StatsCard>
+            <Typography variant="h6" color="primary" mb={3} fontWeight={700}>
+              📊 Your Blog Statistics
+            </Typography>
+            <Grid container spacing={3} justifyContent="center">
+              <Grid item>
+                <StatChip
+                  icon={<ArticleIcon />}
+                  label={`${stats.totalBlogs} Total Blogs`}
+                />
+              </Grid>
+              <Grid item>
+                <StatChip
+                  icon={<VisibilityIcon />}
+                  label={`${stats.totalViews || 0} Total Views`}
+                />
+              </Grid>
+              <Grid item>
+                <StatChip
+                  icon={<FavoriteIcon />}
+                  label={`${stats.totalLikes || 0} Total Likes`}
+                />
+              </Grid>
+              <Grid item>
+                <StatChip
+                  icon={<TrendingIcon />}
+                  label={`Member since ${new Date(stats.memberSince).getFullYear()}`}
+                />
+              </Grid>
+            </Grid>
+          </StatsCard>
+        </Fade>
+      )}
 
       {/* Content */}
       <Box>
-        {user && user.blogs && user.blogs.length > 0 ? (
+        {userBlogs && userBlogs.length > 0 ? (
           <Box className="fade-in">
-            {user.blogs.map((blog, index) => (
-              <Blog
-                key={blog._id}
-                id={blog._id}
-                isUser={true}
-                title={blog.title}
-                description={blog.description}
-                imageURL={blog.image}
-                userName={user.name}
-              />
+            {userBlogs.map((blog, index) => (
+              <Fade in={true} key={blog._id} style={{ transitionDelay: `${index * 100}ms` }}>
+                <div>
+                  <Blog
+                    id={blog._id}
+                    isUser={true}
+                    title={blog.title}
+                    description={blog.description}
+                    imageURL={blog.image}
+                    userName={user?.name || 'You'}
+                    createdAt={blog.createdAt}
+                    views={blog.views}
+                    likeCount={blog.likeCount}
+                    commentCount={blog.commentCount}
+                    readingTime={blog.readingTime}
+                  />
+                </div>
+              </Fade>
             ))}
+
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <PaginationContainer>
+                <Pagination
+                  count={pagination.totalPages}
+                  page={pagination.currentPage}
+                  onChange={handlePageChange}
+                  color="primary"
+                  size="large"
+                  showFirstButton
+                  showLastButton
+                />
+              </PaginationContainer>
+            )}
           </Box>
         ) : (
-          <EmptyState className="fade-in">
-            <ArticleIcon sx={{ fontSize: 80, color: 'primary.main', mb: 3 }} />
-            <Typography variant="h4" color="primary" mb={2} fontWeight={600}>
-              No Blogs Yet
-            </Typography>
-            <Typography variant="body1" color="text.secondary" mb={4} sx={{ maxWidth: '400px', mx: 'auto' }}>
-              You haven't created any blog posts yet. Start sharing your thoughts and stories with the world!
-            </Typography>
-            <CreateBlogButton
-              component={Link}
-              to="/blogs/add"
-              startIcon={<AddIcon />}
-            >
-              Create Your First Blog
-            </CreateBlogButton>
-          </EmptyState>
+          <Zoom in={true}>
+            <EmptyState className="fade-in">
+              <ArticleIcon sx={{ fontSize: 80, color: 'primary.main', mb: 3 }} />
+              <Typography variant="h4" color="primary" mb={2} fontWeight={600}>
+                No Blogs Yet
+              </Typography>
+              <Typography variant="body1" color="text.secondary" mb={4} sx={{ maxWidth: '400px', mx: 'auto' }}>
+                You haven't created any blog posts yet. Start sharing your thoughts and stories with the world!
+              </Typography>
+              <CreateBlogButton
+                component={Link}
+                to="/blogs/add"
+                startIcon={<AddIcon />}
+              >
+                Create Your First Blog
+              </CreateBlogButton>
+            </EmptyState>
+          </Zoom>
         )}
       </Box>
-
-      {/* Refresh button for failed requests */}
-      {!loading && !error && user && user.blogs && user.blogs.length === 0 && (
-        <Box textAlign="center" mt={4}>
-          <RefreshButton
-            onClick={handleRetry}
-            startIcon={<RefreshIcon />}
-          >
-            Refresh
-          </RefreshButton>
-        </Box>
-      )}
     </UserBlogContainer>
   );
 };

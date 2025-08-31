@@ -1,25 +1,27 @@
-import React, { useEffect } from 'react'
-import Header from './components/Header.js'
-import {Routes,Route, Navigate} from 'react-router-dom'
-import Auth from './components/Auth.js'
-import Blogs from './components/Blogs.js'
-import UserBlog from './components/UserBlog.js'
-import AddBlog from './components/AddBlog.js'
-import BlogDetail from './components/BlogDetail.js'
-
-import {useDispatch, useSelector} from 'react-redux'
-import { authActions } from './store/index.js'
-import Signup from './components/Signup.js'
-import First from './components/First.js'
-import UserInfo from './components/UserInfo.js'
-import Loading from './components/Loading.js' // Added
+import React, { useEffect } from 'react';
+import Header from './components/Header.js';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import Auth from './components/Auth.js';
+import Blogs from './components/Blogs.js';
+import UserBlog from './components/UserBlog.js';
+import AddBlog from './components/AddBlog.js';
+import BlogDetail from './components/BlogDetail.js';
+import { useDispatch, useSelector } from 'react-redux';
+import { authActions } from './store/index.js';
+import Signup from './components/Signup.js';
+import First from './components/First.js';
+import UserInfo from './components/UserInfo.js';
+import Loading from './components/Loading.js';
+import socketService from './services/socketService.js';
+import { Snackbar, Alert } from '@mui/material';
+import axios from 'axios';
+import { serverURL } from './helper/Helper.js';
 
 // Import the enhanced CSS
-import './App.css'
+import './App.css';
 
 // Protected Route Component - Enhanced
 const ProtectedRoute = ({ children, isLoggedIn, isLoading, isInitialized }) => {
-  // Show loading while checking authentication
   if (isLoading || !isInitialized) {
     return (
       <div style={{ 
@@ -33,7 +35,6 @@ const ProtectedRoute = ({ children, isLoggedIn, isLoading, isInitialized }) => {
     );
   }
   
-  // Redirect to First.js only if we're sure user is not logged in
   if (!isLoggedIn) {
     return <Navigate to="/" replace />;
   }
@@ -42,32 +43,49 @@ const ProtectedRoute = ({ children, isLoggedIn, isLoading, isInitialized }) => {
 };
 
 const App = () => {
-  const dispatch = useDispatch()
-  const { isLoggedIn, isLoading, isInitialized } = useSelector(state => ({ // Updated
+  const dispatch = useDispatch();
+  const { isLoggedIn, isLoading, isInitialized, user } = useSelector(state => ({
     isLoggedIn: state.isLoggedIn,
     isLoading: state.isLoading,
-    isInitialized: state.isInitialized
-  }))
-  
-  useEffect(() => { // Updated
+    isInitialized: state.isInitialized,
+    user: state.user
+  }));
+
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
+
+  // Enhanced authentication check
+  useEffect(() => {
     const checkAuthStatus = async () => {
       try {
         const userId = localStorage.getItem("userId");
         if (userId) {
-          // Set loading state
           dispatch(authActions.setLoading(true));
           
-          // You can optionally verify the user with the backend here
-          // For now, we'll just restore the login state
-          dispatch(authActions.login({ _id: userId }));
+          // Verify user with backend
+          try {
+            const response = await axios.get(`${serverURL}/api/user/${userId}`);
+            const userData = response.data.user;
+            
+            if (userData) {
+              dispatch(authActions.login(userData));
+              
+              // Connect to socket and join user room
+              const socket = socketService.connect();
+              socketService.joinUserRoom(userId);
+            } else {
+              throw new Error('User data not found');
+            }
+          } catch (error) {
+            console.error('Error verifying user:', error);
+            localStorage.removeItem("userId");
+            dispatch(authActions.logout());
+          }
         } else {
-          // No user ID found, mark as not logged in
           dispatch(authActions.setLoading(false));
           dispatch(authActions.setInitialized(true));
         }
       } catch (error) {
         console.error('Error checking auth status:', error);
-        // On error, clear auth and mark as initialized
         localStorage.removeItem("userId");
         dispatch(authActions.logout());
       }
@@ -75,36 +93,101 @@ const App = () => {
 
     checkAuthStatus();
   }, [dispatch]);
-  
+
+  // Real-time notifications
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      const socket = socketService.connect();
+
+      // User-specific notifications
+      const handleUserNotification = (data) => {
+        setNotification({
+          open: true,
+          message: data.message,
+          severity: 'success'
+        });
+      };
+
+      const handleBlogCreated = (data) => {
+        if (data.blog.user._id === user._id) {
+          setNotification({
+            open: true,
+            message: 'Your blog has been published successfully!',
+            severity: 'success'
+          });
+        }
+      };
+
+      const handleBlogUpdated = (data) => {
+        if (data.blog.user._id === user._id) {
+          setNotification({
+            open: true,
+            message: 'Your blog has been updated successfully!',
+            severity: 'success'
+          });
+        }
+      };
+
+      const handleBlogDeleted = (data) => {
+        setNotification({
+          open: true,
+          message: 'Blog has been deleted successfully!',
+          severity: 'info'
+        });
+      };
+
+      // Register event listeners
+      socketService.onUserLoggedIn(handleUserNotification);
+      socketService.onNewBlog(handleBlogCreated);
+      socketService.onBlogUpdated(handleBlogUpdated);
+      socketService.onBlogDeleted(handleBlogDeleted);
+
+      return () => {
+        socketService.removeAllListeners();
+      };
+    }
+  }, [isLoggedIn, user]);
+
+  // Cleanup socket on unmount
+  useEffect(() => {
+    return () => {
+      socketService.disconnect();
+    };
+  }, []);
+
+  const handleCloseNotification = () => {
+    setNotification({ ...notification, open: false });
+  };
+
   return (
     <div className="app">
-      <Header/>
+      <Header />
       <main className="main-content" style={{ marginTop: '80px' }}>
         <Routes>
-          {/* Public Routes - Always accessible */}
-          <Route path='/' element={<First/>} />
-          <Route path='/auth' element={<Auth/>} />
-          <Route path='/signup' element={<Signup/>} />
+          {/* Public Routes */}
+          <Route path='/' element={<First />} />
+          <Route path='/auth' element={<Auth />} />
+          <Route path='/signup' element={<Signup />} />
           
-          {/* Protected Routes - Enhanced protection */}
+          {/* Protected Routes */}
           <Route path='/blogs' element={
             <ProtectedRoute isLoggedIn={isLoggedIn} isLoading={isLoading} isInitialized={isInitialized}>
-              <Blogs/>
+              <Blogs />
             </ProtectedRoute>
           } />
           <Route path='/blogs/add' element={
             <ProtectedRoute isLoggedIn={isLoggedIn} isLoading={isLoading} isInitialized={isInitialized}>
-              <AddBlog/>
+              <AddBlog />
             </ProtectedRoute>
           } />
           <Route path='/myBlogs' element={
             <ProtectedRoute isLoggedIn={isLoggedIn} isLoading={isLoading} isInitialized={isInitialized}>
-              <UserBlog/>
+              <UserBlog />
             </ProtectedRoute>
           } />
           <Route path='/myBlogs/:id' element={
             <ProtectedRoute isLoggedIn={isLoggedIn} isLoading={isLoading} isInitialized={isInitialized}>
-              <BlogDetail/>
+              <BlogDetail />
             </ProtectedRoute>
           } />
           <Route path="/user-details/:id" element={
@@ -113,14 +196,35 @@ const App = () => {
             </ProtectedRoute>
           } />
           
-          {/* Fallback Route - Only redirect if we're sure user is not logged in */}
+          {/* Fallback Route */}
           <Route path="*" element={
-            isInitialized && !isLoggedIn ? <Navigate to="/" replace /> : <First/>
+            isInitialized && !isLoggedIn ? <Navigate to="/" replace /> : <First />
           } />
         </Routes>
       </main>
-    </div>
-  )
-}
 
-export default App
+      {/* Real-time Notifications */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={4000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseNotification} 
+          severity={notification.severity}
+          sx={{ 
+            borderRadius: 2,
+            fontWeight: 600,
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(20px)',
+          }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </div>
+  );
+};
+
+export default App;

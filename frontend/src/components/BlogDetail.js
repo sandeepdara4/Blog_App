@@ -5,7 +5,6 @@ import {
   Typography, 
   Container, 
   Paper,
-  IconButton,
   InputAdornment,
   Divider,
   Chip,
@@ -14,7 +13,10 @@ import {
   CircularProgress,
   Avatar,
   Card,
-  CardContent
+  CardContent,
+  LinearProgress,
+  Fade,
+  Zoom
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { 
@@ -27,12 +29,15 @@ import {
   CheckCircle as CheckCircleIcon,
   Person as PersonIcon,
   CalendarToday as CalendarIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  Preview as PreviewIcon
 } from '@mui/icons-material';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { useTypingIndicator } from '../hooks/useTypingIndicator';
+import socketService from '../services/socketService';
 import Swal from 'sweetalert2';
 import { serverURL } from '../helper/Helper';
 
@@ -49,147 +54,15 @@ const EditContainer = styled(Container)(({ theme }) => ({
 }));
 
 const EditCard = styled(Paper)(({ theme }) => ({
-  background: 'rgba(255, 255, 255, 0.9)',
-  backdropFilter: 'blur(20px)',
+  background: 'rgba(255, 255, 255, 0.95)',
+  backdropFilter: 'blur(30px)',
   borderRadius: theme.spacing(3),
   boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
   border: '1px solid rgba(255, 255, 255, 0.3)',
   padding: theme.spacing(4),
   width: '100%',
-  maxWidth: '800px',
-  '& .bounce-in': {
-    animation: 'bounceIn 0.8s ease-out',
-  },
-  '& .slide-up': {
-    animation: 'slideUp 0.6s ease-out',
-  },
-  '@keyframes bounceIn': {
-    '0%': {
-      opacity: 0,
-      transform: 'scale(0.9)',
-    },
-    '50%': {
-      opacity: 0.7,
-      transform: 'scale(1.05)',
-    },
-    '100%': {
-      opacity: 1,
-      transform: 'scale(1)',
-    },
-  },
-  '@keyframes slideUp': {
-    '0%': {
-      opacity: 0,
-      transform: 'translateY(20px)',
-    },
-    '100%': {
-      opacity: 1,
-      transform: 'translateY(0)',
-    },
-  },
-}));
-
-const EditHeader = styled(Box)(({ theme }) => ({
-  textAlign: 'center',
-  marginBottom: theme.spacing(4),
-  '& h1': {
-    fontSize: '3.5rem',
-    fontWeight: 800,
-    background: 'linear-gradient(90deg, #667eea, #764ba2)',
-    backgroundClip: 'text',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-  },
-  '& p': {
-    fontSize: '1.2rem',
-    color: '#666',
-    marginTop: theme.spacing(1),
-  },
-}));
-
-const EditTitle = styled(Typography)(({ theme }) => ({
-  fontSize: '2.5rem',
-  fontWeight: 700,
-  color: '#333',
-  marginBottom: theme.spacing(1),
-}));
-
-const EditSubtitle = styled(Typography)(({ theme }) => ({
-  fontSize: '1rem',
-  color: '#666',
-  marginBottom: theme.spacing(4),
-}));
-
-const BackButton = styled(Button)(({ theme }) => ({
-  background: 'linear-gradient(90deg, #667eea, #764ba2)',
-  color: 'white',
-  '&:hover': {
-    background: 'linear-gradient(90deg, #5a67d8, #6b46c1)',
-  },
-  borderRadius: theme.spacing(2),
-  padding: theme.spacing(1, 3),
-  textTransform: 'none',
-  fontWeight: 600,
-  boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
-}));
-
-const FormSection = styled(Box)(({ theme }) => ({
-  marginBottom: theme.spacing(4),
-}));
-
-const SectionTitle = styled(Typography)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: theme.spacing(1),
-  fontSize: '1.1rem',
-  fontWeight: 600,
-  color: '#555',
-  marginBottom: theme.spacing(2),
-}));
-
-const StyledTextField = styled(TextField)(({ theme }) => ({
-  '& .MuiOutlinedInput-root': {
-    borderRadius: theme.spacing(2),
-    background: '#f5f5f5',
-    '& fieldset': {
-      borderColor: '#e0e0e0',
-    },
-    '&:hover fieldset': {
-      borderColor: '#bdbdbd',
-    },
-    '&.Mui-focused fieldset': {
-      borderColor: '#667eea',
-    },
-  },
-  '& .MuiOutlinedInput-input': {
-    padding: theme.spacing(2),
-  },
-}));
-
-const SubmitButton = styled(Button)(({ theme }) => ({
-  background: 'linear-gradient(90deg, #667eea, #764ba2)',
-  color: 'white',
-  '&:hover': {
-    background: 'linear-gradient(90deg, #5a67d8, #6b46c1)',
-  },
-  borderRadius: theme.spacing(2),
-  padding: theme.spacing(1.5, 4),
-  textTransform: 'none',
-  fontWeight: 600,
-  fontSize: '1.1rem',
-  boxShadow: '0 4px 15px rgba(102, 126, 234, 0.3)',
-  '& .MuiCircularProgress-root': {
-    marginRight: theme.spacing(1),
-  },
-}));
-
-const UserInfoCard = styled(Card)(({ theme }) => ({
-  background: 'rgba(255, 255, 255, 0.9)',
-  backdropFilter: 'blur(20px)',
-  borderRadius: theme.spacing(3),
-  boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-  border: '1px solid rgba(255, 255, 255, 0.3)',
-  marginBottom: theme.spacing(4),
+  maxWidth: '900px',
+  position: 'relative',
   overflow: 'hidden',
   '&::before': {
     content: '""',
@@ -197,18 +70,88 @@ const UserInfoCard = styled(Card)(({ theme }) => ({
     top: 0,
     left: 0,
     right: 0,
-    height: '3px',
+    height: '4px',
     background: 'linear-gradient(90deg, #667eea, #764ba2)',
   },
 }));
 
-const UserAvatar = styled(Avatar)(({ theme }) => ({
-  width: 60,
-  height: 60,
-  fontSize: '1.5rem',
+const EditTitle = styled(Typography)(({ theme }) => ({
+  fontSize: '2.5rem',
   fontWeight: 700,
+  textAlign: 'center',
+  marginBottom: theme.spacing(1),
   background: 'linear-gradient(135deg, #667eea, #764ba2)',
-  boxShadow: '0 4px 20px rgba(102, 126, 234, 0.3)',
+  backgroundClip: 'text',
+  WebkitBackgroundClip: 'text',
+  WebkitTextFillColor: 'transparent',
+}));
+
+const StyledTextField = styled(TextField)(({ theme }) => ({
+  marginBottom: theme.spacing(3),
+  '& .MuiOutlinedInput-root': {
+    borderRadius: theme.spacing(2),
+    backgroundColor: 'rgba(248, 250, 252, 0.8)',
+    border: '2px solid transparent',
+    transition: 'all 0.3s ease',
+    '&:hover': {
+      backgroundColor: 'rgba(248, 250, 252, 0.9)',
+      borderColor: 'rgba(102, 126, 234, 0.3)',
+    },
+    '&.Mui-focused': {
+      backgroundColor: 'white',
+      borderColor: '#667eea',
+      boxShadow: '0 0 0 3px rgba(102, 126, 234, 0.1)',
+    },
+  },
+}));
+
+const SubmitButton = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(135deg, #667eea, #764ba2)',
+  color: 'white',
+  padding: theme.spacing(1.5, 4),
+  borderRadius: theme.spacing(2),
+  fontSize: '1.1rem',
+  fontWeight: 600,
+  textTransform: 'none',
+  boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)',
+  transition: 'all 0.3s ease',
+  width: '100%',
+  '&:hover': {
+    background: 'linear-gradient(135deg, #5a6fd8, #6a4190)',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 12px 35px rgba(102, 126, 234, 0.4)',
+  },
+  '&:disabled': {
+    background: theme.palette.grey[400],
+    transform: 'none',
+    boxShadow: 'none',
+  },
+}));
+
+const PreviewButton = styled(Button)(({ theme }) => ({
+  background: 'rgba(255, 255, 255, 0.9)',
+  color: '#667eea',
+  border: '2px solid #667eea',
+  padding: theme.spacing(1.5, 4),
+  borderRadius: theme.spacing(2),
+  fontSize: '1.1rem',
+  fontWeight: 600,
+  textTransform: 'none',
+  transition: 'all 0.3s ease',
+  width: '100%',
+  '&:hover': {
+    background: '#667eea',
+    color: 'white',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)',
+  },
+}));
+
+const CharacterCount = styled(Typography)(({ theme }) => ({
+  fontSize: '0.875rem',
+  color: theme.palette.text.secondary,
+  textAlign: 'right',
+  marginTop: theme.spacing(1),
 }));
 
 const BlogDetail = () => {
@@ -218,21 +161,43 @@ const BlogDetail = () => {
   const [input, setInput] = useState({
     title: '',
     description: '',
-    image: '', // Changed from imageURL to image to match backend
+    image: '',
   });
   const [blog, setBlog] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
+  const [imageValid, setImageValid] = useState(true);
+  const [progress, setProgress] = useState(0);
 
-  const handleChange = (e) => {
+  const { handleInputChange, cleanup } = useTypingIndicator('editing');
+
+  // Connect to socket
+  useEffect(() => {
+    socketService.connect();
+    return cleanup;
+  }, [cleanup]);
+
+  // Validate image URL
+  useEffect(() => {
+    if (input.image) {
+      const img = new Image();
+      img.onload = () => setImageValid(true);
+      img.onerror = () => setImageValid(false);
+      img.src = input.image;
+    } else {
+      setImageValid(true);
+    }
+  }, [input.image]);
+
+  const handleChange = handleInputChange((e) => {
     setInput((prevState) => ({
       ...prevState,
       [e.target.name]: e.target.value,
     }));
-    // Clear error when user starts typing
     if (error) setError("");
-  };
+  });
 
   const fetchDetails = async () => {
     try {
@@ -242,14 +207,8 @@ const BlogDetail = () => {
         return null;
       }
 
-      const res = await axios.get(`${serverURL}/api/blog/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${userId}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const res = await axios.get(`${serverURL}/api/blog/${id}`);
       const data = res.data;
-      console.log('Fetched blog data:', data); // Debug log
       return data.blog;
     } catch (error) {
       console.error('Error fetching blog details:', error);
@@ -265,15 +224,9 @@ const BlogDetail = () => {
         setInput({
           title: data.title || '',
           description: data.description || '',
-          image: data.image || '', // Changed from imageURL to image
-        });
-        console.log('Set input state:', {
-          title: data.title || '',
-          description: data.description || '',
           image: data.image || '',
-        }); // Debug log
+        });
         
-        // Check if the blog belongs to the current user
         if (currentUser && data.user && currentUser._id !== data.user._id) {
           setError('You can only edit your own blogs');
         }
@@ -291,20 +244,12 @@ const BlogDetail = () => {
         throw new Error('User not authenticated');
       }
 
-      console.log('Sending update request with:', input); // Debug log
       const res = await axios.put(`${serverURL}/api/blog/update/${id}`, {
         title: input.title,
         description: input.description,
-        image: input.image, // Include image field in the request
-      }, {
-        headers: {
-          'Authorization': `Bearer ${userId}`,
-          'Content-Type': 'application/json'
-        }
+        image: input.image,
       });
-      const data = res.data;
-      console.log('Update response:', data); // Debug log
-      return data;
+      return res.data;
     } catch (error) {
       console.error('Error updating blog:', error);
       const errorMessage = error.response?.data?.message || 'Failed to update blog';
@@ -321,17 +266,41 @@ const BlogDetail = () => {
       setError('Title is required');
       return;
     }
+    if (input.title.trim().length < 3) {
+      setError('Title must be at least 3 characters long');
+      return;
+    }
     if (!input.description.trim()) {
       setError('Description is required');
+      return;
+    }
+    if (input.description.trim().length < 10) {
+      setError('Description must be at least 10 characters long');
+      return;
+    }
+    if (input.image && !imageValid) {
+      setError('Please provide a valid image URL');
       return;
     }
 
     setIsSubmitting(true);
     setError('');
+    setProgress(0);
+
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 200);
 
     try {
-      const data = await sendRequest();
-      console.log('Blog updated successfully:', data);
+      await sendRequest();
+      setProgress(100);
       
       Swal.fire({
         icon: 'success',
@@ -339,16 +308,14 @@ const BlogDetail = () => {
         text: 'Your blog has been updated and saved.',
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(20px)',
-        customClass: {
-          popup: 'swal2-custom-popup',
-          title: 'swal2-custom-title',
-          confirmButton: 'swal2-custom-confirm',
-        },
+        timer: 2000,
+        showConfirmButton: false,
       }).then(() => navigate('/myblogs'));
     } catch (error) {
+      setProgress(0);
       console.error('Error updating blog:', error);
-      // Error is already set in sendRequest
     } finally {
+      clearInterval(progressInterval);
       setIsSubmitting(false);
     }
   };
@@ -357,7 +324,10 @@ const BlogDetail = () => {
     navigate('/myblogs');
   };
 
-  // Format date function
+  const handlePreview = () => {
+    setShowPreview(!showPreview);
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Date not available';
     try {
@@ -373,6 +343,15 @@ const BlogDetail = () => {
       return 'Date not available';
     }
   };
+
+  const isFormValid = input.title.trim() && 
+                     input.description.trim() && 
+                     (!input.image || imageValid);
+
+  const titleCharCount = input.title.length;
+  const descriptionCharCount = input.description.length;
+  const maxTitleLength = 200;
+  const maxDescriptionLength = 5000;
 
   if (isLoading) {
     return (
@@ -392,9 +371,19 @@ const BlogDetail = () => {
             <Alert severity="error" sx={{ mb: 4, borderRadius: 3, fontSize: '1.1rem' }}>
               {error}
             </Alert>
-            <BackButton onClick={handleBack} startIcon={<ArrowBackIcon />}>
+            <Button 
+              onClick={handleBack} 
+              startIcon={<ArrowBackIcon />}
+              variant="contained"
+              sx={{
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #5a6fd8, #6a4190)',
+                },
+              }}
+            >
               Back to My Blogs
-            </BackButton>
+            </Button>
           </Box>
         </Container>
       </EditContainer>
@@ -404,210 +393,315 @@ const BlogDetail = () => {
   return (
     <EditContainer maxWidth={false}>
       <Container maxWidth="lg">
-        <EditCard elevation={0} className="bounce-in">
-          {/* Header */}
-          <EditHeader>
-            <EditTitle variant="h1">
-              Edit Your Blog
-            </EditTitle>
-            <EditSubtitle variant="body1">
-              Update your blog post with new content and make it even better
-            </EditSubtitle>
-          </EditHeader>
+        <Fade in={true}>
+          <EditCard elevation={0}>
+            {/* Header */}
+            <Box textAlign="center" mb={4}>
+              <EditTitle variant="h1">
+                Edit Your Blog
+              </EditTitle>
+              <Typography variant="body1" color="text.secondary" sx={{ fontSize: '1.1rem' }}>
+                Update your blog post with new content and make it even better
+              </Typography>
+            </Box>
 
-          {/* Back Button */}
-          <Box display="flex" justifyContent="flex-start" mb={4}>
-            <BackButton onClick={handleBack} startIcon={<ArrowBackIcon />}>
-              Back to My Blogs
-            </BackButton>
-          </Box>
-
-          {/* User Info Card */}
-          {blog && blog.user ? (
-            <UserInfoCard className="slide-up">
-              <CardContent>
-                <Grid container spacing={3} alignItems="center">
-                  <Grid item>
-                    <UserAvatar>
-                      {blog.user.name ? blog.user.name.charAt(0).toUpperCase() : 'U'}
-                    </UserAvatar>
-                  </Grid>
-                  <Grid item xs>
-                    <Typography variant="h6" fontWeight={700} color="primary" gutterBottom>
-                      {blog.user.name || 'Unknown User'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" display="flex" alignItems="center" gap={1}>
-                      <CalendarIcon fontSize="small" />
-                      {formatDate(blog.createdAt)}
-                    </Typography>
-                  </Grid>
-                  <Grid item>
-                    <Chip
-                      icon={<PersonIcon />}
-                      label="Blog Author"
-                      color="primary"
-                      variant="outlined"
-                      sx={{ fontWeight: 600 }}
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </UserInfoCard>
-          ) : (
-            <Alert 
-              severity="warning" 
-              icon={<WarningIcon />}
-              sx={{ mb: 4, borderRadius: 3 }}
-              className="slide-up"
-            >
-              User details not available. This might be a system issue.
-            </Alert>
-          )}
-
-          {/* Error Alert */}
-          {error && (
-            <Alert severity="error" sx={{ mb: 4, borderRadius: 3, fontSize: '1rem' }} className="slide-up">
-              {error}
-            </Alert>
-          )}
-
-          {/* Edit Form */}
-          {input && (
-            <form onSubmit={handleSubmit}>
-              <Grid container spacing={4}>
-                {/* Title Section */}
-                <Grid item xs={12}>
-                  <FormSection>
-                    <SectionTitle variant="h6">
-                      <TitleIcon color="primary" />
-                      Blog Title
-                    </SectionTitle>
-                    <StyledTextField
-                      name="title"
-                      onChange={handleChange}
-                      value={input.title}
-                      placeholder="Enter your blog title"
-                      fullWidth
-                      multiline
-                      rows={2}
-                      className="slide-up"
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <TitleIcon color="action" sx={{ fontSize: '1.5rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </FormSection>
-                </Grid>
-
-                {/* Description Section */}
-                <Grid item xs={12}>
-                  <FormSection>
-                    <SectionTitle variant="h6">
-                      <DescriptionIcon color="primary" />
-                      Blog Content
-                    </SectionTitle>
-                    <StyledTextField
-                      name="description"
-                      onChange={handleChange}
-                      value={input.description}
-                      placeholder="Write your blog content here..."
-                      fullWidth
-                      multiline
-                      rows={8}
-                      className="slide-up"
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <DescriptionIcon color="action" sx={{ fontSize: '1.5rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  </FormSection>
-                </Grid>
-
-                {/* Image URL Section */}
-                <Grid item xs={12}>
-                  <FormSection>
-                    <SectionTitle variant="h6">
-                      <ImageIcon color="primary" />
-                      Image URL
-                    </SectionTitle>
-                    <StyledTextField
-                      name="image"
-                      onChange={handleChange}
-                      value={input.image}
-                      placeholder="Enter image URL for your blog"
-                      fullWidth
-                      className="slide-up"
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <ImageIcon color="action" sx={{ fontSize: '1.5rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                    {input.image && (
-                      <Box mt={2} textAlign="center">
-                        <img 
-                          src={input.image} 
-                          alt="Blog preview" 
-                          style={{ 
-                            maxWidth: '100%', 
-                            maxHeight: '200px', 
-                            borderRadius: '8px',
-                            border: '2px solid #e0e0e0'
-                          }}
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'block';
-                          }}
-                        />
-                        <Typography 
-                          variant="caption" 
-                          color="error" 
-                          style={{ display: 'none' }}
-                        >
-                          Invalid image URL
-                        </Typography>
-                      </Box>
-                    )}
-                  </FormSection>
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 4 }} />
-
-              {/* Submit Button */}
-              <SubmitButton
-                type="submit"
-                variant="contained"
-                disabled={isSubmitting}
-                startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-                className="slide-up"
+            {/* Back Button */}
+            <Box display="flex" justifyContent="flex-start" mb={4}>
+              <Button 
+                onClick={handleBack} 
+                startIcon={<ArrowBackIcon />}
+                sx={{
+                  background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                  color: 'white',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #5a6fd8, #6a4190)',
+                  },
+                  borderRadius: 2,
+                  px: 3,
+                  fontWeight: 600,
+                }}
               >
-                {isSubmitting ? 'Updating Blog...' : 'Update Blog'}
-              </SubmitButton>
+                Back to My Blogs
+              </Button>
+            </Box>
 
-              {/* Success Message */}
-              {isSubmitting && (
-                <Box mt={3} textAlign="center">
-                  <Chip
-                    icon={<CheckCircleIcon />}
-                    label="Saving your changes..."
-                    color="success"
-                    variant="outlined"
-                    sx={{ fontSize: '1rem', padding: 1 }}
-                  />
-                </Box>
-              )}
-            </form>
-          )}
-        </EditCard>
+            {/* Progress Bar */}
+            {isSubmitting && (
+              <Box mb={3}>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={progress} 
+                  sx={{ 
+                    borderRadius: 2, 
+                    height: 8,
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    '& .MuiLinearProgress-bar': {
+                      background: 'linear-gradient(90deg, #667eea, #764ba2)',
+                    }
+                  }} 
+                />
+                <Typography variant="body2" color="text.secondary" textAlign="center" mt={1}>
+                  Updating your blog... {progress}%
+                </Typography>
+              </Box>
+            )}
+
+            {/* User Info Card */}
+            {blog && blog.user && (
+              <Zoom in={true}>
+                <Card sx={{ 
+                  mb: 4, 
+                  background: 'rgba(255, 255, 255, 0.9)',
+                  backdropFilter: 'blur(20px)',
+                  borderRadius: 3,
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                }}>
+                  <CardContent>
+                    <Grid container spacing={3} alignItems="center">
+                      <Grid item>
+                        <Avatar sx={{ 
+                          width: 60, 
+                          height: 60, 
+                          fontSize: '1.5rem',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                        }}>
+                          {blog.user.name ? blog.user.name.charAt(0).toUpperCase() : 'U'}
+                        </Avatar>
+                      </Grid>
+                      <Grid item xs>
+                        <Typography variant="h6" fontWeight={700} color="primary" gutterBottom>
+                          {blog.user.name || 'Unknown User'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" display="flex" alignItems="center" gap={1}>
+                          <CalendarIcon fontSize="small" />
+                          Created: {formatDate(blog.createdAt)}
+                        </Typography>
+                        {blog.updatedAt && blog.updatedAt !== blog.createdAt && (
+                          <Typography variant="body2" color="text.secondary" display="flex" alignItems="center" gap={1}>
+                            <EditIcon fontSize="small" />
+                            Updated: {formatDate(blog.updatedAt)}
+                          </Typography>
+                        )}
+                      </Grid>
+                      <Grid item>
+                        <Chip
+                          icon={<PersonIcon />}
+                          label="Blog Author"
+                          color="primary"
+                          variant="outlined"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Zoom>
+            )}
+
+            {/* Error Alert */}
+            {error && (
+              <Zoom in={true}>
+                <Alert severity="error" sx={{ mb: 4, borderRadius: 3, fontSize: '1rem' }}>
+                  {error}
+                </Alert>
+              </Zoom>
+            )}
+
+            {/* Edit Form */}
+            {input && (
+              <form onSubmit={handleSubmit}>
+                <Grid container spacing={4}>
+                  {/* Title Section */}
+                  <Grid item xs={12}>
+                    <Box>
+                      <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                        <TitleIcon color="primary" />
+                        Blog Title
+                      </Typography>
+                      <StyledTextField
+                        name="title"
+                        onChange={handleChange}
+                        value={input.title}
+                        placeholder="Enter your blog title"
+                        fullWidth
+                        required
+                        error={titleCharCount > maxTitleLength}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <TitleIcon color="action" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <CharacterCount 
+                        color={titleCharCount > maxTitleLength ? 'error' : 'textSecondary'}
+                      >
+                        {titleCharCount}/{maxTitleLength} characters
+                      </CharacterCount>
+                    </Box>
+                  </Grid>
+
+                  {/* Description Section */}
+                  <Grid item xs={12}>
+                    <Box>
+                      <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                        <DescriptionIcon color="primary" />
+                        Blog Content
+                      </Typography>
+                      <StyledTextField
+                        name="description"
+                        onChange={handleChange}
+                        value={input.description}
+                        placeholder="Write your blog content here..."
+                        fullWidth
+                        required
+                        multiline
+                        rows={8}
+                        error={descriptionCharCount > maxDescriptionLength}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
+                              <DescriptionIcon color="action" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <CharacterCount 
+                        color={descriptionCharCount > maxDescriptionLength ? 'error' : 'textSecondary'}
+                      >
+                        {descriptionCharCount}/{maxDescriptionLength} characters
+                      </CharacterCount>
+                    </Box>
+                  </Grid>
+
+                  {/* Image URL Section */}
+                  <Grid item xs={12}>
+                    <Box>
+                      <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                        <ImageIcon color="primary" />
+                        Featured Image
+                      </Typography>
+                      <StyledTextField
+                        name="image"
+                        onChange={handleChange}
+                        value={input.image}
+                        placeholder="Enter image URL for your blog"
+                        fullWidth
+                        error={input.image && !imageValid}
+                        helperText={input.image && !imageValid ? "Invalid image URL" : ""}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <ImageIcon color="action" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      
+                      {/* Image Preview */}
+                      {input.image && imageValid && (
+                        <Fade in={true}>
+                          <Box mt={2} textAlign="center">
+                            <img 
+                              src={input.image} 
+                              alt="Blog preview" 
+                              style={{ 
+                                maxWidth: '100%', 
+                                maxHeight: '200px', 
+                                borderRadius: '8px',
+                                border: '2px solid #e0e0e0',
+                                objectFit: 'contain'
+                              }}
+                              onError={() => setImageValid(false)}
+                            />
+                            <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 1 }}>
+                              ✓ Image loaded successfully
+                            </Typography>
+                          </Box>
+                        </Fade>
+                      )}
+                    </Box>
+                  </Grid>
+
+                  {/* Action Buttons */}
+                  <Grid item xs={12}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <PreviewButton
+                          type="button"
+                          onClick={handlePreview}
+                          startIcon={<PreviewIcon />}
+                          disabled={!isFormValid}
+                        >
+                          {showPreview ? 'Hide Preview' : 'Preview Changes'}
+                        </PreviewButton>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <SubmitButton
+                          type="submit"
+                          disabled={isSubmitting || !isFormValid}
+                          startIcon={isSubmitting ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+                        >
+                          {isSubmitting ? 'Updating...' : 'Update Blog'}
+                        </SubmitButton>
+                      </Grid>
+                    </Grid>
+                  </Grid>
+                </Grid>
+
+                {/* Blog Preview */}
+                {showPreview && isFormValid && (
+                  <Fade in={true}>
+                    <Box mt={6} p={4} sx={{ 
+                      background: 'rgba(102, 126, 234, 0.05)', 
+                      borderRadius: 3,
+                      border: '2px solid rgba(102, 126, 234, 0.1)'
+                    }}>
+                      <Typography variant="h5" color="primary" mb={3} fontWeight={700}>
+                        📖 Updated Blog Preview
+                      </Typography>
+                      
+                      {input.image && imageValid && (
+                        <Box mb={3} textAlign="center">
+                          <img
+                            src={input.image}
+                            alt="Preview"
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '300px',
+                              borderRadius: '12px',
+                              objectFit: 'contain'
+                            }}
+                          />
+                        </Box>
+                      )}
+                      
+                      <Typography variant="h4" fontWeight={700} mb={2}>
+                        {input.title}
+                      </Typography>
+                      
+                      <Typography variant="body1" sx={{ 
+                        lineHeight: 1.8,
+                        whiteSpace: 'pre-wrap',
+                        color: 'text.secondary'
+                      }}>
+                        {input.description}
+                      </Typography>
+                      
+                      <Box mt={3} display="flex" gap={1} flexWrap="wrap">
+                        <Chip label={`By ${blog?.user?.name || 'You'}`} color="primary" variant="outlined" />
+                        <Chip label="Updated" color="warning" variant="outlined" />
+                        <Chip label={`${Math.ceil(input.description.split(' ').length / 200)} min read`} color="default" variant="outlined" />
+                      </Box>
+                    </Box>
+                  </Fade>
+                )}
+              </form>
+            )}
+          </EditCard>
+        </Fade>
       </Container>
     </EditContainer>
   );

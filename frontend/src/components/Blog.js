@@ -4,13 +4,14 @@ import {
     Card, 
     CardContent, 
     CardHeader, 
-    CardMedia, 
     IconButton, 
     Typography,
     Chip,
     Divider,
     Container,
-    Grid
+    Grid,
+    Fade,
+    Zoom
   } from '@mui/material';
   import { styled } from '@mui/material/styles';
   import { 
@@ -20,18 +21,20 @@ import {
     orange, 
     purple 
   } from '@mui/material/colors';
-  import React from 'react';
-  import ModeEditOutlineIcon from '@mui/icons-material/ModeEditOutline';
-  import DeleteIcon from '@mui/icons-material/Delete';
+  import React, { useState } from 'react';
+  import { 
+    Edit as EditIcon,
+    Delete as DeleteIcon,
+    Visibility as VisibilityIcon,
+    AccessTime as AccessTimeIcon,
+    Person as PersonIcon,
+    Favorite as FavoriteIcon,
+    Comment as CommentIcon
+  } from '@mui/icons-material';
   import { useNavigate } from 'react-router-dom';
   import axios from 'axios';
   import Swal from 'sweetalert2';
   import { serverURL } from '../helper/Helper';
-  import { 
-    AccessTime as AccessTimeIcon,
-    Person as PersonIcon,
-    Edit as EditIcon
-  } from '@mui/icons-material';
   
   import 'sweetalert2/dist/sweetalert2.css';
   
@@ -98,7 +101,6 @@ import {
     },
   }));
   
-  // Fixed StyledCardMedia with proper image fitting
   const StyledCardMedia = styled(Box)(({ theme }) => ({
     height: '300px',
     width: '100%',
@@ -112,52 +114,7 @@ import {
     '& img': {
       maxWidth: '100%',
       maxHeight: '100%',
-      objectFit: 'contain', // This ensures the whole image is visible
-      objectPosition: 'center',
-      transition: 'transform 0.4s ease',
-      display: 'block',
-      borderRadius: theme.spacing(2),
-    },
-    '&:hover img': {
-      transform: 'scale(1.05)',
-    },
-    '&::before': {
-      content: '""',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.1) 100%)',
-      opacity: 0,
-      transition: 'opacity 0.4s ease',
-      zIndex: 1,
-      borderRadius: theme.spacing(2),
-    },
-    '&:hover::before': {
-      opacity: 1,
-    },
-    // Responsive height adjustments
-    [theme.breakpoints.down('sm')]: {
-      height: '250px',
-    },
-    [theme.breakpoints.down('xs')]: {
-      height: '200px',
-    },
-  }));
-  
-  // Alternative version for cover-style fitting (if you prefer to fill the container)
-  const StyledCardMediaCover = styled(Box)(({ theme }) => ({
-    height: '300px',
-    width: '100%',
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: theme.spacing(2),
-    backgroundColor: theme.palette.grey[100],
-    '& img': {
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover', // This fills the container but may crop the image
+      objectFit: 'contain',
       objectPosition: 'center',
       transition: 'transform 0.4s ease',
       display: 'block',
@@ -184,9 +141,6 @@ import {
     },
     [theme.breakpoints.down('sm')]: {
       height: '250px',
-    },
-    [theme.breakpoints.down('xs')]: {
-      height: '200px',
     },
   }));
   
@@ -212,7 +166,7 @@ import {
   
   const ActionButton = styled(IconButton)(({ theme, variant }) => ({
     backgroundColor: variant === 'edit' ? 'rgba(255, 193, 7, 0.95)' : 'rgba(244, 67, 54, 0.95)',
-    color: variant === 'edit' ? '#fff' : '#fff',
+    color: '#fff',
     backdropFilter: 'blur(20px)',
     border: '2px solid rgba(255, 255, 255, 0.3)',
     transition: 'all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
@@ -248,18 +202,45 @@ import {
       height: 24,
     },
   }));
+
+  const StatsChip = styled(Chip)(({ theme }) => ({
+    backgroundColor: 'rgba(102, 126, 234, 0.08)',
+    color: '#667eea',
+    fontWeight: 500,
+    fontSize: '0.875rem',
+    '& .MuiChip-icon': {
+      color: '#667eea',
+    },
+  }));
   
-  const Blog = ({ title, description, imageURL, userName, isUser, id, imageFitMode = 'contain' }) => {
+  const Blog = ({ 
+    title, 
+    description, 
+    imageURL, 
+    userName, 
+    isUser, 
+    id, 
+    createdAt,
+    views = 0,
+    likeCount = 0,
+    commentCount = 0,
+    readingTime = 1
+  }) => {
     const navigate = useNavigate();
+    const [isDeleting, setIsDeleting] = useState(false);
     
     const handleEdit = () => {
       navigate(`/myblogs/${id}`);
     };
   
     const deleteRequest = async () => {
-      const res = await axios.delete(`${serverURL}/api/blog/${id}`).catch(err => console.log(err));
-      const data = await res.data;
-      return data;
+      try {
+        const res = await axios.delete(`${serverURL}/api/blog/${id}`);
+        return res.data;
+      } catch (err) {
+        console.error('Error deleting blog:', err);
+        throw err;
+      }
     };
   
     const handleDelete = () => {
@@ -268,9 +249,10 @@ import {
         text: 'You will not be able to recover this blog post!',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
         confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel',
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(20px)',
         customClass: {
@@ -279,44 +261,58 @@ import {
           confirmButton: 'swal2-custom-confirm',
           cancelButton: 'swal2-custom-cancel',
         },
-      }).then((result) => {
+      }).then(async (result) => {
         if (result.isConfirmed) {
-          deleteRequest()
-            .then(() => {
-              Swal.fire({
-                title: 'Deleted!',
-                text: 'Your blog post has been deleted.',
-                icon: 'success',
-                background: 'rgba(255, 255, 255, 0.95)',
-                backdropFilter: 'blur(20px)',
-              }).then(() => navigate('/blogs'));
-            })
-            .catch((error) => {
-              console.error('Error deleting blog:', error);
-              Swal.fire({
-                title: 'Oops...',
-                text: 'Something went wrong! Please try again later.',
-                icon: 'error',
-                background: 'rgba(255, 255, 255, 0.95)',
-                backdropFilter: 'blur(20px)',
-              });
+          setIsDeleting(true);
+          try {
+            await deleteRequest();
+            
+            Swal.fire({
+              title: 'Deleted!',
+              text: 'Your blog post has been deleted.',
+              icon: 'success',
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(20px)',
+              timer: 2000,
+              showConfirmButton: false,
             });
+          } catch (error) {
+            console.error('Error deleting blog:', error);
+            Swal.fire({
+              title: 'Error!',
+              text: 'Failed to delete the blog. Please try again.',
+              icon: 'error',
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(20px)',
+            });
+          } finally {
+            setIsDeleting(false);
+          }
         }
       });
     };
   
     const formatDate = (date) => {
-      const options = { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      };
-      return new Date(date).toLocaleDateString(undefined, options);
+      if (!date) return 'Recently';
+      try {
+        const blogDate = new Date(date);
+        const now = new Date();
+        const diffTime = Math.abs(now - blogDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 1) return 'Today';
+        if (diffDays === 2) return 'Yesterday';
+        if (diffDays <= 7) return `${diffDays - 1} days ago`;
+        
+        return blogDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      } catch (error) {
+        return 'Recently';
+      }
     };
-  
-    const currentDate = formatDate(new Date());
   
     // Generate avatar color based on username
     const getAvatarColor = (name) => {
@@ -324,118 +320,200 @@ import {
       const index = name.charCodeAt(0) % colors.length;
       return colors[index][500];
     };
-  
-    // Choose the appropriate styled component based on imageFitMode
-    const ImageContainer = imageFitMode === 'cover' ? StyledCardMediaCover : StyledCardMedia;
+
+    // Truncate description for better display
+    const truncateDescription = (text, maxLength = 300) => {
+      if (text.length <= maxLength) return text;
+      return text.substring(0, maxLength) + '...';
+    };
   
     return (
       <Container maxWidth="lg">
-        <StyledCard className="fade-in-scale">
-          {/* Action Buttons */}
-          {isUser && (
-            <ActionButtons>
-              <ActionButton
-                variant="edit"
-                onClick={handleEdit}
-                size="large"
-                className="bounce-in"
-              >
-                <EditIcon fontSize="medium" />
-              </ActionButton>
-              <ActionButton
-                variant="delete"
-                onClick={handleDelete}
-                size="large"
-                className="bounce-in"
-              >
-                <DeleteIcon fontSize="medium" />
-              </ActionButton>
-            </ActionButtons>
-          )}
+        <Fade in={true}>
+          <StyledCard className="fade-in-scale">
+            {/* Action Buttons */}
+            {isUser && (
+              <ActionButtons>
+                <Zoom in={true} style={{ transitionDelay: '100ms' }}>
+                  <ActionButton
+                    variant="edit"
+                    onClick={handleEdit}
+                    size="large"
+                    disabled={isDeleting}
+                  >
+                    <EditIcon fontSize="medium" />
+                  </ActionButton>
+                </Zoom>
+                <Zoom in={true} style={{ transitionDelay: '200ms' }}>
+                  <ActionButton
+                    variant="delete"
+                    onClick={handleDelete}
+                    size="large"
+                    disabled={isDeleting}
+                  >
+                    <DeleteIcon fontSize="medium" />
+                  </ActionButton>
+                </Zoom>
+              </ActionButtons>
+            )}
   
-          {/* Blog Image - Now properly fitted */}
-          <ImageContainer className="hover-scale">
-            <img
-              src={imageURL}
-              alt={title}
-              onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/900x300/f5f5f5/999999?text=Image+Not+Found';
-              }}
-            />
-          </ImageContainer>
+            {/* Blog Image */}
+            <StyledCardMedia className="hover-scale">
+              <img
+                src={imageURL}
+                alt={title}
+                onError={(e) => {
+                  e.target.src = 'https://via.placeholder.com/900x300/f5f5f5/999999?text=Image+Not+Found';
+                }}
+              />
+            </StyledCardMedia>
   
-          {/* Blog Header */}
-          <StyledCardHeader
-            avatar={
-              <Avatar 
-                sx={{ 
-                  bgcolor: getAvatarColor(userName),
-                  color: 'white',
-                  fontWeight: 'bold',
-                  fontSize: '1.4rem',
-                }} 
-                aria-label="user avatar"
-              >
-                {userName.charAt(0).toUpperCase()}
-              </Avatar>
-            }
-            title={title}
-            subheader={
-              <Box display="flex" alignItems="center" gap={1.5}>
-                <AccessTimeIcon fontSize="small" color="action" />
-                {currentDate}
-              </Box>
-            }
-          />
-  
-          {/* User Info */}
-          <Box px={4} pb={2}>
-            <UserChip
-              avatar={<Avatar sx={{ width: 24, height: 24, fontSize: '0.8rem' }}>{userName.charAt(0).toUpperCase()}</Avatar>}
-              label={`By ${userName}`}
-              variant="outlined"
-              className="hover-lift"
-            />
-          </Box>
-  
-          <Divider sx={{ mx: 4, my: 3 }} />
-  
-          {/* Blog Content */}
-          <StyledCardContent>
-            <Typography variant="body2" component="div">
-              {description}
-            </Typography>
-          </StyledCardContent>
-  
-          {/* Blog Footer */}
-          <Box px={4} pb={4}>
-            <Grid container spacing={3} alignItems="center">
-              <Grid item xs={12} sm={6}>
+            {/* Blog Header */}
+            <StyledCardHeader
+              avatar={
+                <Avatar 
+                  sx={{ 
+                    bgcolor: getAvatarColor(userName),
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '1.4rem',
+                  }} 
+                  aria-label="user avatar"
+                >
+                  {userName.charAt(0).toUpperCase()}
+                </Avatar>
+              }
+              title={title}
+              subheader={
                 <Box display="flex" alignItems="center" gap={1.5}>
-                  <PersonIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="500">
-                    Author: {userName}
-                  </Typography>
+                  <AccessTimeIcon fontSize="small" color="action" />
+                  {formatDate(createdAt)}
                 </Box>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Box display="flex" justifyContent="flex-end">
-                  <Chip 
-                    label="Blog Post" 
-                    size="medium" 
-                    color="primary" 
+              }
+            />
+  
+            {/* User Info and Stats */}
+            <Box px={4} pb={2}>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item>
+                  <UserChip
+                    avatar={<Avatar sx={{ width: 24, height: 24, fontSize: '0.8rem' }}>{userName.charAt(0).toUpperCase()}</Avatar>}
+                    label={`By ${userName}`}
                     variant="outlined"
-                    sx={{ 
-                      fontWeight: 600,
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      borderRadius: 2,
-                    }}
+                    className="hover-lift"
                   />
-                </Box>
+                </Grid>
+                <Grid item>
+                  <StatsChip
+                    icon={<AccessTimeIcon />}
+                    label={`${readingTime} min read`}
+                    size="small"
+                  />
+                </Grid>
+                {views > 0 && (
+                  <Grid item>
+                    <StatsChip
+                      icon={<VisibilityIcon />}
+                      label={`${views} views`}
+                      size="small"
+                    />
+                  </Grid>
+                )}
+                {likeCount > 0 && (
+                  <Grid item>
+                    <StatsChip
+                      icon={<FavoriteIcon />}
+                      label={`${likeCount} likes`}
+                      size="small"
+                    />
+                  </Grid>
+                )}
+                {commentCount > 0 && (
+                  <Grid item>
+                    <StatsChip
+                      icon={<CommentIcon />}
+                      label={`${commentCount} comments`}
+                      size="small"
+                    />
+                  </Grid>
+                )}
               </Grid>
-            </Grid>
-          </Box>
-        </StyledCard>
+            </Box>
+  
+            <Divider sx={{ mx: 4, my: 3 }} />
+  
+            {/* Blog Content */}
+            <StyledCardContent>
+              <Typography variant="body2" component="div" sx={{ 
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.8 
+              }}>
+                {truncateDescription(description)}
+              </Typography>
+              
+              {description.length > 300 && (
+                <Typography 
+                  variant="body2" 
+                  color="primary" 
+                  sx={{ 
+                    mt: 2, 
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    '&:hover': {
+                      textDecoration: 'underline'
+                    }
+                  }}
+                  onClick={() => {
+                    // Could navigate to full blog view or expand inline
+                    console.log('Read more clicked');
+                  }}
+                >
+                  Read more...
+                </Typography>
+              )}
+            </StyledCardContent>
+  
+            {/* Blog Footer */}
+            <Box px={4} pb={4}>
+              <Grid container spacing={3} alignItems="center">
+                <Grid item xs={12} sm={6}>
+                  <Box display="flex" alignItems="center" gap={1.5}>
+                    <PersonIcon fontSize="small" color="action" />
+                    <Typography variant="body2" color="text.secondary" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="500">
+                      Author: {userName}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Box display="flex" justifyContent="flex-end" gap={1}>
+                    <Chip 
+                      label="Blog Post" 
+                      size="medium" 
+                      color="primary" 
+                      variant="outlined"
+                      sx={{ 
+                        fontWeight: 600,
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        borderRadius: 2,
+                      }}
+                    />
+                    {new Date(createdAt).toDateString() === new Date().toDateString() && (
+                      <Chip 
+                        label="New" 
+                        size="small" 
+                        color="success" 
+                        sx={{ 
+                          fontWeight: 600,
+                          animation: 'pulse 2s ease-in-out infinite',
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Grid>
+              </Grid>
+            </Box>
+          </StyledCard>
+        </Fade>
       </Container>
     );
   };
